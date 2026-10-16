@@ -68,6 +68,18 @@ function countContext(showToast = false) {
     if (showToast) toastr.success("Context counted!", "Info Block");
 }
 
+// Функция для скрытия/раскрытия сообщений через слэш-команды Таверны
+async function toggleMessages(range, forceState = null) {
+    const firstId = parseInt(range.split('-')[0]);
+    const targetState = forceState !== null ? forceState : !chat[firstId]?.is_system;
+    const commandName = targetState ? 'hide' : 'unhide';
+    
+    if (SlashCommandParser.commands[commandName]) {
+        await SlashCommandParser.commands[commandName].callback({}, range);
+        countContext(false);
+    }
+}
+
 const init = () => {
     panel = document.createElement('div');
     panel.classList.add('stwii--panel');
@@ -75,6 +87,9 @@ const init = () => {
     panel.innerHTML = `
         <div class="stwii--stats-container">
             <div class="cm-stats">
+                <div style="margin-bottom: 6px; text-align: center;">
+                    <input id="cm_hide_btn" class="menu_button" type="button" value="👁️ Hide / Unhide Messages" style="width: 100%; cursor: pointer;">
+                </div>
                 <div style="margin-bottom: 10px; text-align: center;">
                     <input id="cm_count_btn" class="menu_button" type="submit" value="🔍 Count Context" style="width: 100%; cursor: pointer;">
                 </div>
@@ -96,6 +111,43 @@ const init = () => {
     `;
     document.body.append(panel);
     wiContainer = panel.querySelector('.stwii--wi-container');
+
+    // Кнопка скрытия/раскрытия сообщений (над Count Context)
+    $(document).on('click', '#cm_hide_btn', async function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!chat || !chat.length) {
+            toastr.warning("Чат пуст.");
+            return;
+        }
+
+        const lastMesId = Math.max(0, chat.length - 1);
+        const rangeStr = window.prompt('Введите диапазон (например, 0-35) или ID одного сообщения:', `0-${lastMesId}`);
+        if (!rangeStr) return;
+        
+        const isValid = /^\s*\d+\s*(-\s*\d+\s*)?$/.test(rangeStr);
+        
+        if (isValid) {
+            const cleanRange = rangeStr.replace(/\s+/g, '');
+            const firstId = parseInt(cleanRange.split('-')[0]);
+            
+            if (firstId >= chat.length) {
+                toastr.error(`Сообщение с ID ${firstId} не существует (всего сообщений: ${chat.length}).`);
+                return;
+            }
+
+            const currentState = chat[firstId]?.is_system;
+            const confirmMsg = currentState ? `Раскрыть сообщения: ${cleanRange}?` : `Скрыть сообщения: ${cleanRange}?`;
+            
+            if (window.confirm(confirmMsg)) {
+                await toggleMessages(cleanRange, !currentState);
+                toastr.success(currentState ? `Сообщения (${cleanRange}) раскрыты!` : `Сообщения (${cleanRange}) скрыты!`);
+            }
+        } else {
+            toastr.error("Неверный формат. Используйте 'X-Y' или 'X'.");
+        }
+    });
 
     // Кнопка ручного пересчета контекста
     $(document).on('click', '#cm_count_btn', function(e) {
@@ -172,7 +224,6 @@ const init = () => {
                 e.stopPropagation();
                 $('#extensionsMenu').hide(); 
                 
-                // Если панель уже открыта — закрываем её при повторном клике
                 if (panel.style.display === 'flex') {
                     panel.style.display = 'none';
                     return;
